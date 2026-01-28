@@ -1,9 +1,7 @@
 import { notFound } from "next/navigation";
 import { getPaste, deletePaste } from "../../../lib/store";
 
-type PageProps = {
-  params: Promise<{ id: string }>;
-};
+type PageProps = { params: Promise<{ id: string }> };
 
 export default async function PastePage({ params }: PageProps) {
   const { id } = await params;

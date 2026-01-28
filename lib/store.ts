@@ -1,6 +1,5 @@
-// lib/store.ts
-import fs from "fs/promises";
-import path from "path";
+import { dbConnect } from "./db";
+import { Paste, type PasteDoc } from "./models/Paste";
 
 export type PasteRecord = {
   id: string;
@@ -11,76 +10,70 @@ export type PasteRecord = {
   remainingViews: number | null;
 };
 
-const DATA_DIR = path.join(process.cwd(), ".data");
-const DATA_FILE = path.join(DATA_DIR, "pastes.json");
-
-async function readAll(): Promise<Record<string, PasteRecord>> {
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-async function writeAll(data: Record<string, PasteRecord>) {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
+function toRecord(doc: PasteDoc): PasteRecord {
+  return {
+    id: doc._id.toString(),
+    content: doc.content,
+    createdAtMs: doc.createdAtMs,
+    expiresAtMs: doc.expiresAtMs ?? null,
+    maxViews: doc.maxViews ?? null,
+    remainingViews: doc.remainingViews ?? null,
+  };
 }
 
 export async function persistenceHealth(): Promise<boolean> {
   try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
+    await dbConnect();
     return true;
   } catch {
     return false;
   }
 }
 
-export async function createPaste(rec: PasteRecord) {
-  const data = await readAll();
-  data[rec.id] = rec;
-  await writeAll(data);
+export async function createPaste(input: Omit<PasteRecord, "id">): Promise<PasteRecord> {
+  await dbConnect();
+  const doc = await Paste.create({
+    content: input.content,
+    createdAtMs: input.createdAtMs,
+    expiresAtMs: input.expiresAtMs,
+    maxViews: input.maxViews,
+    remainingViews: input.remainingViews,
+  });
+  return toRecord(doc);
 }
 
 export async function getPaste(id: string): Promise<PasteRecord | null> {
-  const data = await readAll();
-  return data[id] ?? null;
+  await dbConnect();
+  const doc = await Paste.findById(id).lean<PasteDoc | null>();
+  return doc ? toRecord(doc) : null;
 }
 
-export async function deletePaste(id: string) {
-  const data = await readAll();
-  delete data[id];
-  await writeAll(data);
+export async function deletePaste(id: string): Promise<void> {
+  await dbConnect();
+  await Paste.findByIdAndDelete(id);
 }
 
 export async function consumeView(id: string): Promise<number | null> {
-  const data = await readAll();
-  const p = data[id];
-  if (!p) return null;
+  await dbConnect();
 
-  // unlimited
-  if (p.remainingViews === null) return null;
+  // If remainingViews is null => unlimited (don’t decrement)
+  const doc = await Paste.findById(id);
+  if (!doc) return null;
 
-  // already exhausted => unavailable
-  if (p.remainingViews <= 0) {
-    delete data[id];
-    await writeAll(data);
+  if (doc.remainingViews === null || doc.remainingViews === undefined) return null;
+
+  if (doc.remainingViews <= 0) {
+    await Paste.findByIdAndDelete(id);
     return null;
   }
 
-  // decrement
-  p.remainingViews -= 1;
+  doc.remainingViews -= 1;
 
-  // if went negative (shouldn’t), delete and mark unavailable
-  if (p.remainingViews < 0) {
-    delete data[id];
-    await writeAll(data);
+  if (doc.remainingViews < 0) {
+    await Paste.findByIdAndDelete(id);
     return null;
   }
 
-  data[id] = p;
-  await writeAll(data);
-  return p.remainingViews;
+  await doc.save();
+  return doc.remainingViews;
 }

@@ -1,8 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import crypto from "crypto";
-import { createPaste, PasteRecord } from "../../../lib/store";
+import { createPaste } from "../../../lib/store";
 
 function isPosInt(n: any) {
   return Number.isInteger(n) && n >= 1;
@@ -24,22 +23,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "max_views must be >=1" }, { status: 400 });
     }
 
-    const id = crypto.randomBytes(8).toString("hex");
     const now = Date.now();
+    const expiresAtMs = body.ttl_seconds ? now + body.ttl_seconds * 1000 : null;
+    const maxViews = body.max_views ?? null;
 
-    const rec: PasteRecord = {
-      id,
+    const rec = await createPaste({
       content: body.content,
       createdAtMs: now,
-      expiresAtMs: body.ttl_seconds ? now + body.ttl_seconds * 1000 : null,
-      maxViews: body.max_views ?? null,
-      remainingViews: body.max_views ?? null,
-    };
-
-    await createPaste(rec);
+      expiresAtMs,
+      maxViews,
+      remainingViews: maxViews,
+    });
 
     const origin = new URL(req.url).origin;
-    return NextResponse.json({ id, url: `${origin}/p/${id}` }, { status: 201 });
+    return NextResponse.json({ id: rec.id, url: `${origin}/p/${rec.id}` }, { status: 201 });
   } catch (e: any) {
     console.error("POST /api/pastes crashed:", e);
     return NextResponse.json(
