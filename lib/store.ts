@@ -1,43 +1,74 @@
-import { kv } from "@vercel/kv";
+import fs from "fs/promises";
+import path from "path";
 
 export type PasteRecord = {
   id: string;
   content: string;
   createdAtMs: number;
   expiresAtMs: number | null;
+  maxViews: number | null;
   remainingViews: number | null;
 };
 
-// in-memory fallback for local dev
-const mem = new Map<string, PasteRecord>();
-const key = (id: string) => `paste:${id}`;
+const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_FILE = path.join(DATA_DIR, "pastes.json");
 
-function kvReady() {
-  return (
-    !!process.env.KV_REST_API_URL &&
-    !!process.env.KV_REST_API_TOKEN
-  );
+async function readAll(): Promise<Record<string, PasteRecord>> {
+  try {
+    const raw = await fs.readFile(DATA_FILE, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
 
-export async function savePaste(p: PasteRecord) {
-  if (kvReady()) {
-    await kv.set(key(p.id), p);
-  } else {
-    mem.set(key(p.id), p);
+async function writeAll(data: Record<string, PasteRecord>) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
+}
+
+export async function kvHealth() {
+  // locally, file storage is our persistence
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    return true;
+  } catch {
+    return false;
   }
+}
+
+export async function createPaste(rec: PasteRecord) {
+  const data = await readAll();
+  data[rec.id] = rec;
+  await writeAll(data);
 }
 
 export async function getPaste(id: string): Promise<PasteRecord | null> {
-  if (kvReady()) {
-    return (await kv.get<PasteRecord>(key(id))) ?? null;
-  }
-  return mem.get(key(id)) ?? null;
+  const data = await readAll();
+  return data[id] ?? null;
 }
 
 export async function deletePaste(id: string) {
-  if (kvReady()) {
-    await kv.del(key(id));
-  } else {
-    mem.delete(key(id));
+  const data = await readAll();
+  delete data[id];
+  await writeAll(data);
+}
+
+export async function consumeView(id: string): Promise<number | null> {
+  const data = await readAll();
+  const p = data[id];
+  if (!p) return null;
+
+  if (p.remainingViews === null) return null;
+
+  if (p.remainingViews <= 0) {
+    delete data[id];
+    await writeAll(data);
+    return null;
   }
+
+  p.remainingViews -= 1;
+  data[id] = p;
+  await writeAll(data);
+  return p.remainingViews;
 }

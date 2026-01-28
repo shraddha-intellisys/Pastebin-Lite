@@ -2,100 +2,83 @@
 
 import { useState } from "react";
 
-export default function HomePage() {
+export default function Home() {
   const [content, setContent] = useState("");
-  const [ttl, setTtl] = useState("");
-  const [views, setViews] = useState("");
-  const [resultUrl, setResultUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [ttl, setTtl] = useState<string>("");
+  const [views, setViews] = useState<string>("");
+  const [result, setResult] = useState<{ id: string; url: string } | null>(null);
+  const [error, setError] = useState<string>("");
 
   async function onCreate() {
-    setError(null);
-    setResultUrl(null);
+    setError("");
+    setResult(null);
 
-    const payload: any = { content };
+    const body: any = { content };
 
-    if (ttl.trim() !== "") payload.ttl_seconds = Number(ttl);
-    if (views.trim() !== "") payload.max_views = Number(views);
+    if (ttl.trim() !== "") body.ttl_seconds = Number(ttl);
+    if (views.trim() !== "") body.max_views = Number(views);
 
-    setLoading(true);
-    try {
-      const res = await fetch("/api/pastes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    const res = await fetch("/api/pastes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
-      const data = await res.json();
+    const data = await res.json().catch(() => null);
 
-      if (!res.ok) {
-        setError(data?.error || "Failed to create paste");
-        return;
-      }
-
-      setResultUrl(data.url);
-    } catch (e: any) {
-      setError("Network error. Is the server running?");
-    } finally {
-      setLoading(false);
+    if (!res.ok) {
+      setError(data?.error ?? "Failed");
+      return;
     }
+
+    setResult(data);
   }
 
   return (
-    <main style={{ maxWidth: 760, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
+    <main style={{ maxWidth: 900, margin: "40px auto", padding: 20 }}>
       <h1>Pastebin-Lite</h1>
 
-      <label>Paste content *</label>
+      <label style={{ display: "block", marginTop: 12 }}>Content *</label>
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
         rows={10}
-        style={{ width: "100%", marginTop: 8 }}
-        placeholder="Type your paste here..."
+        style={{ width: "100%", padding: 10 }}
       />
 
-      <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-        <div style={{ flex: 1 }}>
-          <label>TTL (seconds)</label>
+      <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+        <div>
+          <label>TTL seconds (optional)</label>
           <input
             value={ttl}
             onChange={(e) => setTtl(e.target.value)}
-            type="number"
-            min={1}
-            style={{ width: "100%", marginTop: 6 }}
-            placeholder="optional"
+            placeholder="e.g. 60"
+            style={{ display: "block", padding: 8, width: 200 }}
           />
         </div>
 
-        <div style={{ flex: 1 }}>
-          <label>Max views</label>
+        <div>
+          <label>Max views (optional)</label>
           <input
             value={views}
             onChange={(e) => setViews(e.target.value)}
-            type="number"
-            min={1}
-            style={{ width: "100%", marginTop: 6 }}
-            placeholder="optional"
+            placeholder="e.g. 5"
+            style={{ display: "block", padding: 8, width: 200 }}
           />
         </div>
       </div>
 
-      <button
-        onClick={onCreate}
-        disabled={loading}
-        style={{ marginTop: 14, padding: "10px 14px", cursor: "pointer" }}
-      >
-        {loading ? "Creating..." : "Create Paste"}
+      <button onClick={onCreate} style={{ marginTop: 16, padding: "10px 14px" }}>
+        Create Paste
       </button>
 
-      {error && <p style={{ color: "crimson", marginTop: 12 }}>{error}</p>}
+      {error && <p style={{ marginTop: 12 }}>{error}</p>}
 
-      {resultUrl && (
+      {result && (
         <p style={{ marginTop: 12 }}>
-          Shareable URL:{" "}
-          <a href={resultUrl} target="_blank" rel="noreferrer">
-            {resultUrl}
+          Share URL:{" "}
+          <a href={result.url} target="_blank" rel="noreferrer">
+            {result.url}
           </a>
         </p>
       )}
