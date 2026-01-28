@@ -1,3 +1,4 @@
+// lib/store.ts
 import fs from "fs/promises";
 import path from "path";
 
@@ -16,7 +17,8 @@ const DATA_FILE = path.join(DATA_DIR, "pastes.json");
 async function readAll(): Promise<Record<string, PasteRecord>> {
   try {
     const raw = await fs.readFile(DATA_FILE, "utf8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
   }
@@ -27,8 +29,7 @@ async function writeAll(data: Record<string, PasteRecord>) {
   await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
 }
 
-export async function kvHealth() {
-  // locally, file storage is our persistence
+export async function persistenceHealth(): Promise<boolean> {
   try {
     await fs.mkdir(DATA_DIR, { recursive: true });
     return true;
@@ -59,15 +60,26 @@ export async function consumeView(id: string): Promise<number | null> {
   const p = data[id];
   if (!p) return null;
 
+  // unlimited
   if (p.remainingViews === null) return null;
 
+  // already exhausted => unavailable
   if (p.remainingViews <= 0) {
     delete data[id];
     await writeAll(data);
     return null;
   }
 
+  // decrement
   p.remainingViews -= 1;
+
+  // if went negative (shouldn’t), delete and mark unavailable
+  if (p.remainingViews < 0) {
+    delete data[id];
+    await writeAll(data);
+    return null;
+  }
+
   data[id] = p;
   await writeAll(data);
   return p.remainingViews;

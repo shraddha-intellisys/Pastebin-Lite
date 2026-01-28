@@ -1,30 +1,37 @@
-import { NextResponse, type NextRequest } from "next/server";
+// app/api/pastes/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { nowMs } from "../../../../lib/time";
 import { getPaste, deletePaste, consumeView } from "../../../../lib/store";
 
+export const runtime = "nodejs";
+
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
-  const { id } = await context.params;
+  const id = context.params.id;
 
   const paste = await getPaste(id);
   if (!paste) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const now = nowMs(req);
 
-  // TTL check
+  // TTL check (deterministic in TEST_MODE)
   if (paste.expiresAtMs !== null && now > paste.expiresAtMs) {
     await deletePaste(id);
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  // view count: only API fetch counts
   let remaining_views: number | null = null;
 
-  // Each successful API fetch counts as a view
   if (paste.maxViews !== null) {
     const r = await consumeView(id);
-    if (r === null) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (r === null) {
+      // exhausted -> unavailable
+      await deletePaste(id);
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
     remaining_views = r;
   }
 
@@ -32,7 +39,9 @@ export async function GET(
     {
       content: paste.content,
       remaining_views,
-      expires_at: paste.expiresAtMs ? new Date(paste.expiresAtMs).toISOString() : null,
+      expires_at: paste.expiresAtMs
+        ? new Date(paste.expiresAtMs).toISOString()
+        : null,
     },
     { status: 200 }
   );

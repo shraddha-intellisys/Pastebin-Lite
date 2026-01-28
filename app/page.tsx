@@ -1,22 +1,23 @@
+// app/page.tsx
 "use client";
 
 import { useState } from "react";
 
 export default function Home() {
   const [content, setContent] = useState("");
-  const [ttl, setTtl] = useState<string>("");
-  const [views, setViews] = useState<string>("");
+  const [ttl, setTtl] = useState("");
+  const [maxViews, setMaxViews] = useState("");
   const [result, setResult] = useState<{ id: string; url: string } | null>(null);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
 
   async function onCreate() {
-    setError("");
+    setError(null);
     setResult(null);
 
     const body: any = { content };
 
     if (ttl.trim() !== "") body.ttl_seconds = Number(ttl);
-    if (views.trim() !== "") body.max_views = Number(views);
+    if (maxViews.trim() !== "") body.max_views = Number(maxViews);
 
     const res = await fetch("/api/pastes", {
       method: "POST",
@@ -24,59 +25,51 @@ export default function Home() {
       body: JSON.stringify(body),
     });
 
-    const data = await res.json().catch(() => null);
+    const json = await res.json().catch(() => null);
 
     if (!res.ok) {
-      setError(data?.error ?? "Failed");
+      setError(json?.error ?? "failed_to_create");
       return;
     }
 
-    setResult(data);
+    setResult(json);
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: "40px auto", padding: 20 }}>
-      <h1>Pastebin-Lite</h1>
+    <main style={{ maxWidth: 800, margin: "40px auto", padding: 20 }}>
+      <h1>Pastebin Lite (Local)</h1>
 
-      <label style={{ display: "block", marginTop: 12 }}>Content *</label>
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        rows={10}
+        placeholder="Paste content..."
+        rows={8}
         style={{ width: "100%", padding: 10 }}
       />
 
-      <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-        <div>
-          <label>TTL seconds (optional)</label>
-          <input
-            value={ttl}
-            onChange={(e) => setTtl(e.target.value)}
-            placeholder="e.g. 60"
-            style={{ display: "block", padding: 8, width: 200 }}
-          />
-        </div>
-
-        <div>
-          <label>Max views (optional)</label>
-          <input
-            value={views}
-            onChange={(e) => setViews(e.target.value)}
-            placeholder="e.g. 5"
-            style={{ display: "block", padding: 8, width: 200 }}
-          />
-        </div>
+      <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+        <input
+          value={ttl}
+          onChange={(e) => setTtl(e.target.value)}
+          placeholder="ttl_seconds (optional)"
+        />
+        <input
+          value={maxViews}
+          onChange={(e) => setMaxViews(e.target.value)}
+          placeholder="max_views (optional)"
+        />
+        <button onClick={onCreate}>Create</button>
       </div>
 
-      <button onClick={onCreate} style={{ marginTop: 16, padding: "10px 14px" }}>
-        Create Paste
-      </button>
-
-      {error && <p style={{ marginTop: 12 }}>{error}</p>}
+      {error && (
+        <p style={{ marginTop: 12, color: "crimson" }}>
+          Error: {error}
+        </p>
+      )}
 
       {result && (
         <p style={{ marginTop: 12 }}>
-          Share URL:{" "}
+          Created:{" "}
           <a href={result.url} target="_blank" rel="noreferrer">
             {result.url}
           </a>
